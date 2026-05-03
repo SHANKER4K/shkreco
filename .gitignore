@@ -20,7 +20,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+uv.lock
 # Virtual Environment
 face_venv/
 venv/
