@@ -21,6 +21,8 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from contextlib import asynccontextmanager
+
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from torchvision import transforms
@@ -116,7 +118,7 @@ def run_recognition(frame_bgr):
             best_name = name
 
     status = "recognized" if best_name != "Unknown" else "unknown"
-    confidence = float(round(best_dist, 2)) if best_name != "Unknown" else 0
+    confidence = float(round(best_dist, 2)) if best_name != "Unknown" else float(round(dist, 2))
 
     return {
         "name": best_name,
@@ -161,7 +163,11 @@ class CameraManager:
 
 camera = CameraManager()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    camera.stop()
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -217,11 +223,8 @@ def delete_worker(name: str):
 
 @app.post("/api/workers/capture-live")
 async def capture_live_photo(name: str = Form(...), photo_index: int = Form(...)):
-    with camera.lock:
-        cap = camera.get()
-        ret, frame = cap.read()
-
-    if not ret:
+    frame = camera.read()
+    if frame is None:
         return {"status": "no_frame"}
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
