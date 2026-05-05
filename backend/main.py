@@ -181,6 +181,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.post("/api/attendance/log")
+def log_attendance(body: dict):
+    name = body.get("name")
+    timestamp = body.get("timestamp")
+    if not name or not timestamp:
+        raise HTTPException(status_code=400, detail="Missing name or timestamp")
+    
+    # Read last line from CSV to check for duplicates
+    if os.path.exists("attendance.csv"):
+        with open("attendance.csv", "rb") as f:
+            # Read last line
+            f.seek(0, 2)  # Go to end
+            file_size = f.tell()
+            if file_size > 0:
+                # Read backwards to find last line
+                buffer_size = min(1024, file_size)
+                f.seek(-buffer_size, 2)
+                last_lines = f.read().decode().strip().split("\n")
+                if last_lines:
+                    last_line = last_lines[-1]
+                    if last_line and last_line != "name, timestamp":  # Skip header
+                        parts = last_line.split(", ")
+                        if len(parts) >= 2:
+                            last_name = parts[0]
+                            last_timestamp_str = ", ".join(parts[1:])
+                            if last_name == name:
+                                try:
+                                    last_time = datetime.datetime.fromisoformat(last_timestamp_str)
+                                    current_time = datetime.datetime.fromisoformat(timestamp)
+                                    time_diff = (current_time - last_time).total_seconds()
+                                    if time_diff < 300:  # 300 seconds = 5 minutes
+                                        return {"status": "skipped", "reason": "Already logged within 5 minutes"}
+                                except ValueError:
+                                    pass  # Continue if date parsing fails
+    
+    log_entry = f"{name}, {timestamp}\n"
+    is_new_file = not os.path.exists("attendance.csv")
+    
+    with open("attendance.csv", "a") as f:
+        if is_new_file:
+            f.write("name, timestamp\n")  # Write header if file is new  
+        f.write(log_entry)
+        
+    # sleep 5s
+    time.sleep(5)
+    
+    return {"status": "logged"}
 
 @app.get("/api/workers")
 def get_workers():

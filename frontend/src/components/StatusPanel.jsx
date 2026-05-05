@@ -6,6 +6,7 @@ export default function StatusPanel({
   faceDetected,
   mode,
   captureProgress,
+  message,
   onCapture,
   onCancel,
 }) {
@@ -260,7 +261,7 @@ export default function StatusPanel({
               }}
             >
               {lastRecognition.time} •{" "}
-              {Math.floor(lastRecognition.confidence.toFixed(2)*100)}%
+              {Math.floor(lastRecognition.confidence.toFixed(2) * 100)}%
             </div>
             <div
               style={{
@@ -287,6 +288,18 @@ export default function StatusPanel({
             No recognitions yet
           </div>
         )}
+      </div>
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: "var(--teal)",
+          textAlign: "center",
+          padding: "12px 0",
+          marginBottom: 16,
+        }}
+      >
+        {message}
       </div>
 
       {/* Total Count */}
