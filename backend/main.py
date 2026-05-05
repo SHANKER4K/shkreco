@@ -185,49 +185,65 @@ app.add_middleware(
 def log_attendance(body: dict):
     name = body.get("name")
     timestamp = body.get("timestamp")
+    
     if not name or not timestamp:
         raise HTTPException(status_code=400, detail="Missing name or timestamp")
     
-    # Read last line from CSV to check for duplicates
-    if os.path.exists("attendance.csv"):
-        with open("attendance.csv", "rb") as f:
-            # Read last line
-            f.seek(0, 2)  # Go to end
-            file_size = f.tell()
-            if file_size > 0:
-                # Read backwards to find last line
-                buffer_size = min(1024, file_size)
-                f.seek(-buffer_size, 2)
-                last_lines = f.read().decode().strip().split("\n")
-                if last_lines:
-                    last_line = last_lines[-1]
-                    if last_line and last_line != "name, timestamp":  # Skip header
-                        parts = last_line.split(", ")
-                        if len(parts) >= 2:
-                            last_name = parts[0]
-                            last_timestamp_str = ", ".join(parts[1:])
-                            if last_name == name:
-                                try:
-                                    last_time = datetime.datetime.fromisoformat(last_timestamp_str)
-                                    current_time = datetime.datetime.fromisoformat(timestamp)
-                                    time_diff = (current_time - last_time).total_seconds()
-                                    if time_diff < 300:  # 300 seconds = 5 minutes
-                                        return {"status": "skipped", "reason": "Already logged within 5 minutes"}
-                                except ValueError:
-                                    pass  # Continue if date parsing fails
+    last_entry = get_last_entry_for_employee(name)
     
-    log_entry = f"{name}, {timestamp}\n"
-    is_new_file = not os.path.exists("attendance.csv")
     
+    if not last_entry:
+        status = "IN"  
+    elif last_entry["status"] == "IN":
+        status = "OUT"  
+    else:
+        status = "IN"  
+    
+    
+    log_entry = f"{name}, {timestamp}, {status}\n"
     with open("attendance.csv", "a") as f:
-        if is_new_file:
-            f.write("name, timestamp\n")  # Write header if file is new  
-        f.write(log_entry)
-        
-    # sleep 5s
-    time.sleep(5)
+        if not os.path.exists("attendance.csv") or os.path.getsize("attendance.csv") == 0:
+            f.write("name, timestamp, status\n")
+        if last_entry:
+            try:
+                last_time = datetime.datetime.fromisoformat(last_entry["timestamp"])
+                current_time = datetime.datetime.fromisoformat(timestamp)
+                time_diff = (current_time - last_time).total_seconds()
+                
+                if time_diff < 300:  # أقل من 5 دقائق
+                    return {
+                        "status": "skipped",
+                        "reason": f"تأخير بين التغييرات: {int(time_diff)}s فقط، اللازم 300s"
+                    }
+            except ValueError:
+                pass  # متابعة إذا فشل تحليل التاريخ
+        f.write(log_entry)    
+    return {
+        "status": "logged",
+        "action": status,
+        "name": name,
+        "time": timestamp
+    }
+
+def get_last_entry_for_employee(name):
+    """قراءة آخر سجل للموظف"""
+    if not os.path.exists("attendance.csv"):
+        return None
     
-    return {"status": "logged"}
+    with open("attendance.csv", "r") as f:
+        lines = f.readlines()
+    
+    # البحث من النهاية نحو البداية
+    for line in reversed(lines):
+        if line.strip() and line != "name, timestamp, status\n":
+            parts = line.strip().split(", ")
+            if len(parts) >= 3 and parts[0] == name:
+                return {
+                    "name": parts[0],
+                    "timestamp": parts[1],
+                    "status": parts[2]
+                }
+    return None
 
 @app.get("/api/workers")
 def get_workers():
